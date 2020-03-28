@@ -1,0 +1,133 @@
+---
+title: "Practical Machine Learning Course Prediction Assignment"
+subtitle: "Quantified Self Movement Data Analysis Report"
+author: "Barbara Henning"
+date: "3/27/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Background and data available
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement: a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: <http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har> (see the section on the Weight Lifting Exercise Dataset).
+
+The training data for this project are available here:
+<https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv>
+
+The test data are available here:
+<https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv>
+
+### What you should submit
+
+The goal of this project is to predict the manner in which the participants did the exercise, which is measured by the "classe" variable in the training set. Any of the other variables can be used to predict with. This report should describe:  
+    1. how the model was built;  
+    2. how the cross validation was performed;  
+    3. what is the expected out of sample error;  
+    4. why each choice was made.  
+Later, the prediction model will also be used to predict 20 different test cases.
+
+The submission for the Peer Review portion should consist of a link to a Github repo with your R markdown and compiled HTML file describing the analysis. The ext should be constrained to:  
+    A. up to 2000 words of the writeup;  
+    B. less than 5 figures.  
+
+<b> Course Project Prediction Quiz Portion  </b>  
+
+To apply the final machine learning algorithm to the 20 test cases available in the test data above and submit the predictions in appropriate format to the Course Project Prediction Quiz for automated grading.
+
+### Data loading
+
+```{r warning=FALSE, error=FALSE}
+# load required lbraries and setting set
+library(GGally)
+library(caret)
+library(rpart)
+library(rattle)
+set.seed(3433)
+```
+
+```{r warning=FALSE, error=FALSE}
+#trainning data
+trainUrl = "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+# testing data
+testUrl = "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+trainData = read.csv(url(trainUrl), na.strings=c("NA","#DIV/0!",""), row.names = "X")
+testData = read.csv(url(testUrl), na.strings=c("NA","#DIV/0!",""), row.names = "X")
+```
+
+### Data exploration and data cleaning
+
+The dataset has `r dim(trainData)[1]` observations.  The following histogram shows that around 60 variables has almost zero NA values (NA count per column is close to zero) and around 100 variables have almost all observations as NA values (NA count per column is over 15000).  Therefore, these variables with high number of NA values can be removed from the dataset because they are not informative for the model.
+
+```{r warning=FALSE, error=FALSE}
+# checking if variables are in the same sequence in both train and test sets
+colnames(trainData)[colnames(trainData)!=colnames(testData)]
+
+# checking the presence of NAs
+hist(colSums(is.na(trainData)), main = "NAs on dataset", xlab = "NA count per column")
+# because there are columns (variables) with almost no data, they can be removed from traing set
+trainData = trainData[, colSums(is.na(trainData)) == 0]
+testData = testData[, colSums(is.na(testData)) == 0]
+
+# check variblese sequence again
+colnames(trainData)[colnames(trainData)!=colnames(testData)]
+```
+
+### Training data paritioning
+
+For the model training and validation step, the initial training data is split into two data sets, the training set with 60\% of the observations and the validation set with 40\% of the observations:
+
+```{r warning=FALSE, error=FALSE}
+inTrain = createDataPartition(y = trainData$classe, p = 0.6, list = FALSE)
+trainSet <- trainData[inTrain, ]
+validSet <- trainData[-inTrain, ]
+```
+
+### Machine learning model selection
+
+Random forest and decision tree models are highly intepretable and robust classification models. Therefore, here I am fitting these two models to the training set and then comparing their performance for predction on the validation set.  
+ 
+ <b>  Random forest    </b>  
+ 
+I will use <b>5-fold cross validation</b> when applying the algorithm. 
+
+```{r warning=FALSE, error=FALSE}
+modRF = train(classe ~ ., data = trainSet, method = "rf", 
+               trControl = trainControl(method = "cv", 5), ntree = 250)
+modRF
+
+predictRF = predict(modRF, validSet)
+confusionMatrix(validSet$classe, predictRF)
+accuracy = postResample(predictRF, validSet$classe)
+ose = 1 - as.numeric(confusionMatrix(validSet$classe, predictRF)$overall[1])
+```  
+
+The Random forest estimated accuracy was `r accuracy[1]*100`\% and the estimated Out-of-Sample Error was `r ose*100`\%.  
+
+<b>  Decision Tree    </b>  
+
+```{r warning=FALSE, error=FALSE}
+modDT <- rpart(classe ~ ., data = trainSet, method = "class")
+fancyRpartPlot(modDT)
+
+predictDT <- predict(modDT, validSet, type = "class")
+confusionMatrix(validSet$classe, predictDT)
+accuracyDT <- postResample(predictDT, validSet$classe)
+oseDT <- 1 - as.numeric(confusionMatrix(validSet$classe, predictDT)$overall[1])
+```  
+
+The Random forest estimated accuracy was `r accuracyDT[1]*100`% and the estimated Out-of-Sample Error was `r oseDT*100`\%.  
+
+
+Finally, the conclusion is that the Random Forests algorithm yielded better performance.
+
+### Application of the selected model to the testing set
+
+```{r warning=FALSE, error=FALSE}
+testPred = predict(modRF, testData)
+testPred
+```  
+
